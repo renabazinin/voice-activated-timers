@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Activated Timers</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .timer-card {
+            transition: all 0.3s ease-in-out;
+        }
+        .timer-done {
+            transform: scale(1.05);
+            background-color: #10B981 !important; /* Tailwind green-500 */
+        }
+        /* Simple pulse animation for listening status */
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.7;
+            }
+        }
+        .listening-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 flex flex-col items-center min-h-screen p-4 md:p-8">
+
+    <div class="w-full max-w-4xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl md:text-5xl font-bold text-gray-900">Voice Activated Timers</h1>
+            <p class="text-gray-600 mt-2">Say a keyword to start a timer. Multiple timers can run at once!</p>
+        </header>
+
+        <main class="space-y-8">
+            <!-- Main Control Section -->
+            <div class="bg-white p-6 rounded-2xl shadow-lg text-center">
+                 <button id="controlButton" class="w-full md:w-auto bg-blue-600 text-white font-bold py-3 px-8 rounded-lg text-xl hover:bg-blue-700 transition-colors focus:outline-none focus:ring-4 focus:ring-blue-300">
+                    Start Listening
+                </button>
+                <p id="status" class="text-gray-500 mt-4 h-6">Status: Idle</p>
+                <p id="transcript" class="text-gray-700 mt-2 h-6 italic"></p>
+            </div>
+
+            <!-- Active Timers Section -->
+            <div id="timersContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Timer cards will be inserted here dynamically -->
+            </div>
+
+            <!-- Configuration Section -->
+            <div class="grid md:grid-cols-2 gap-8">
+                <!-- Add New Timer Form -->
+                <div class="bg-white p-6 rounded-2xl shadow-lg">
+                    <h2 class="text-2xl font-bold mb-4">Add a New Timer</h2>
+                    <form id="addTimerForm" class="space-y-4">
+                        <div>
+                            <label for="wordInput" class="block text-sm font-medium text-gray-700">Keyword</label>
+                            <input type="text" id="wordInput" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., 'stretch'" required>
+                        </div>
+                        <div>
+                            <label for="durationInput" class="block text-sm font-medium text-gray-700">Duration (seconds)</label>
+                            <input type="number" id="durationInput" min="1" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., 60" required>
+                        </div>
+                        <button type="submit" class="w-full bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition-colors focus:outline-none focus:ring-4 focus:ring-green-300">
+                            Add Command
+                        </button>
+                    </form>
+                </div>
+                <!-- Available Commands List -->
+                <div class="bg-white p-6 rounded-2xl shadow-lg">
+                    <h2 class="text-2xl font-bold mb-4">Available Commands</h2>
+                    <ul id="commandList" class="space-y-2 max-h-48 overflow-y-auto">
+                       <!-- Command list will be populated here -->
+                    </ul>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Check for browser support for the Web Speech API
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                alert("Sorry, your browser doesn't support the Web Speech API. Try Chrome or Edge.");
+                return;
+            }
+
+            // --- DOM ELEMENTS ---
+            const controlButton = document.getElementById('controlButton');
+            const statusEl = document.getElementById('status');
+            const transcriptEl = document.getElementById('transcript');
+            const timersContainer = document.getElementById('timersContainer');
+            const addTimerForm = document.getElementById('addTimerForm');
+            const wordInput = document.getElementById('wordInput');
+            const durationInput = document.getElementById('durationInput');
+            const commandList = document.getElementById('commandList');
+
+            // --- STATE MANAGEMENT ---
+            let recognition;
+            let isListening = false;
+            let timerCommands = {
+                'blue':   { duration: 30, color: 'bg-blue-500' },
+                'yellow': { duration: 20, color: 'bg-yellow-400' },
+                'green':  { duration: 5,  color: 'bg-green-500' }
+            };
+
+            // --- INITIALIZATION ---
+            initializeRecognition();
+            updateCommandList();
+
+            // --- FUNCTIONS ---
+
+            /**
+             * Speaks the given text using the Web Speech API (Text-to-Speech).
+             * @param {string} text - The text to speak.
+             */
+            function speak(text) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'en-US';
+                utterance.rate = 1.0;
+                utterance.pitch = 1.0;
+                window.speechSynthesis.speak(utterance);
+            }
+
+            /**
+             * Sets up the SpeechRecognition instance and its event listeners.
+             */
+            function initializeRecognition() {
+                recognition = new SpeechRecognition();
+                recognition.continuous = true; // Keep listening even after a result
+                recognition.interimResults = false; // We only want final results
+                recognition.lang = 'en-US';
+
+                recognition.onstart = () => {
+                    statusEl.textContent = 'Status: Listening...';
+                    controlButton.classList.add('listening-pulse');
+                    transcriptEl.textContent = '';
+                };
+
+                recognition.onend = () => {
+                    if (isListening) {
+                        // If it stops unexpectedly while it should be listening, restart it.
+                        recognition.start();
+                    } else {
+                        statusEl.textContent = 'Status: Idle';
+                        controlButton.classList.remove('listening-pulse');
+                    }
+                };
+
+                recognition.onerror = (event) => {
+                    console.error('Speech recognition error:', event.error);
+                    statusEl.textContent = `Error: ${event.error}`;
+                };
+
+                recognition.onresult = (event) => {
+                    const lastResult = event.results[event.results.length - 1];
+                    const command = lastResult[0].transcript.trim().toLowerCase();
+                    transcriptEl.textContent = `Heard: "${command}"`;
+
+                    // Check if the command matches any of our timer keywords
+                    if (timerCommands[command]) {
+                        const { duration, color } = timerCommands[command];
+                        startTimer(command, duration, color);
+                    }
+                };
+            }
+
+            /**
+             * Creates and starts a new timer on the screen.
+             * @param {string} word - The keyword that triggered the timer.
+             * @param {number} duration - The duration of the timer in seconds.
+             * @param {string} color - The Tailwind CSS background color class.
+             */
+            function startTimer(word, duration, color) {
+                const timerId = Date.now(); // Unique ID for the timer element
+                let remaining = duration;
+
+                const timerCard = document.createElement('div');
+                timerCard.id = `timer-${timerId}`;
+                timerCard.className = `timer-card ${color} text-white p-6 rounded-2xl shadow-lg flex flex-col items-center justify-center`;
+                
+                const wordEl = document.createElement('h3');
+                wordEl.className = 'text-2xl font-bold capitalize';
+                wordEl.textContent = word;
+
+                const timeEl = document.createElement('p');
+                timeEl.className = 'text-5xl font-mono font-bold mt-2';
+                timeEl.textContent = remaining;
+
+                timerCard.appendChild(wordEl);
+                timerCard.appendChild(timeEl);
+                timersContainer.appendChild(timerCard);
+
+                const interval = setInterval(() => {
+                    remaining--;
+                    if (remaining > 0) {
+                        timeEl.textContent = remaining;
+                    } else {
+                        clearInterval(interval);
+                        timeEl.textContent = 'Done!';
+                        timerCard.classList.add('timer-done');
+                        
+                        // Announce timer completion with text-to-speech
+                        speak(`${word} finish`);
+                        
+                        // Remove the timer after a few seconds
+                        setTimeout(() => {
+                            timerCard.style.opacity = '0';
+                            timerCard.style.transform = 'scale(0.8)';
+                            setTimeout(() => timerCard.remove(), 300);
+                        }, 3000);
+                    }
+                }, 1000);
+            }
+            
+            /**
+             * Renders the list of available commands in the UI.
+             */
+            function updateCommandList() {
+                commandList.innerHTML = ''; // Clear existing list
+                Object.entries(timerCommands).forEach(([word, {duration}]) => {
+                    const li = document.createElement('li');
+                    li.className = 'flex justify-between items-center bg-gray-100 p-2 rounded-md';
+                    li.innerHTML = `
+                        <span class="font-medium capitalize">${word}</span>
+                        <span class="text-gray-600">${duration}s</span>
+                    `;
+                    commandList.appendChild(li);
+                });
+            }
+
+
+            // --- EVENT LISTENERS ---
+
+            // Toggle listening on/off
+            controlButton.addEventListener('click', () => {
+                isListening = !isListening;
+                if (isListening) {
+                    controlButton.textContent = 'Stop Listening';
+                    recognition.start();
+                } else {
+                    controlButton.textContent = 'Start Listening';
+                    recognition.stop();
+                }
+            });
+
+            // Handle new timer form submission
+            addTimerForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const word = wordInput.value.trim().toLowerCase();
+                const duration = parseInt(durationInput.value, 10);
+
+                if (word && duration > 0) {
+                    // Generate a random-ish color for the new timer
+                    const colors = ['bg-red-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-teal-500'];
+                    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                    
+                    timerCommands[word] = { duration, color: randomColor };
+                    updateCommandList();
+                    wordInput.value = '';
+                    durationInput.value = '';
+                } else {
+                    alert('Please enter a valid word and a duration greater than 0.');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
