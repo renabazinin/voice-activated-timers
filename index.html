@@ -233,13 +233,39 @@
                 commandList.innerHTML = ''; // Clear existing list
                 Object.entries(timerCommands).forEach(([word, {duration}]) => {
                     const li = document.createElement('li');
-                    li.className = 'flex justify-between items-center bg-gray-100 p-2 rounded-md';
+                    li.className = 'flex justify-between items-center bg-gray-100 p-2 rounded-md hover:bg-gray-200 transition-colors';
                     li.innerHTML = `
                         <span class="font-medium capitalize">${word}</span>
-                        <span class="text-gray-600">${duration}s</span>
+                        <div class="flex items-center gap-3">
+                            <span class="text-gray-600">${duration}s</span>
+                            <button 
+                                class="remove-command text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full w-6 h-6 flex items-center justify-center transition-colors font-bold text-lg"
+                                data-word="${word}"
+                                title="Remove ${word}"
+                            >−</button>
+                        </div>
                     `;
                     commandList.appendChild(li);
                 });
+
+                // Add event listeners to all remove buttons
+                document.querySelectorAll('.remove-command').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const word = e.target.getAttribute('data-word');
+                        removeTimerCommand(word);
+                    });
+                });
+            }
+
+            /**
+             * Removes a timer command from the available commands.
+             * @param {string} word - The keyword to remove.
+             */
+            function removeTimerCommand(word) {
+                if (confirm(`Remove "${word}" timer command?`)) {
+                    delete timerCommands[word];
+                    updateCommandList();
+                }
             }
 
 
