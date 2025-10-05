@@ -73,6 +73,13 @@
                             <label for="durationInput" class="block text-sm font-medium text-gray-700">Duration (seconds)</label>
                             <input type="number" id="durationInput" min="1" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., 60" required>
                         </div>
+                        <div>
+                            <label for="announcementInput" class="block text-sm font-medium text-gray-700">
+                                Custom Announcement <span class="text-gray-400 text-xs">(optional)</span>
+                            </label>
+                            <input type="text" id="announcementInput" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., 'Time's up for'">
+                            <p class="text-xs text-gray-500 mt-1">Keyword will be added at the end. Empty defaults to "finish"</p>
+                        </div>
                         <button type="submit" class="w-full bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition-colors focus:outline-none focus:ring-4 focus:ring-green-300">
                             Add Command
                         </button>
@@ -106,15 +113,18 @@
             const addTimerForm = document.getElementById('addTimerForm');
             const wordInput = document.getElementById('wordInput');
             const durationInput = document.getElementById('durationInput');
+            const announcementInput = document.getElementById('announcementInput');
             const commandList = document.getElementById('commandList');
 
             // --- STATE MANAGEMENT 
             let recognition;
             let isListening = false;
-            let timerCommands = {
-                'blue':   { duration: 30, color: 'bg-blue-500' },
-                'yellow': { duration: 20, color: 'bg-yellow-400' },
-                'green':  { duration: 5,  color: 'bg-green-500' }
+            
+            // Load timer commands from localStorage or use defaults
+            let timerCommands = loadCommands() || {
+                'blue':   { duration: 30, color: 'bg-blue-500', announcement: '' },
+                'yellow': { duration: 20, color: 'bg-yellow-400', announcement: '' },
+                'green':  { duration: 5,  color: 'bg-green-500', announcement: '' }
             };
 
             // --- INITIALIZATION ---
@@ -122,6 +132,31 @@
             updateCommandList();
 
             // --- FUNCTIONS ---
+
+            /**
+             * Loads timer commands from localStorage.
+             * @returns {Object|null} The saved commands or null if none exist.
+             */
+            function loadCommands() {
+                try {
+                    const saved = localStorage.getItem('timerCommands');
+                    return saved ? JSON.parse(saved) : null;
+                } catch (error) {
+                    console.error('Error loading commands from localStorage:', error);
+                    return null;
+                }
+            }
+
+            /**
+             * Saves timer commands to localStorage.
+             */
+            function saveCommands() {
+                try {
+                    localStorage.setItem('timerCommands', JSON.stringify(timerCommands));
+                } catch (error) {
+                    console.error('Error saving commands to localStorage:', error);
+                }
+            }
 
             /**
              * Speaks the given text using the Web Speech API (Text-to-Speech).
@@ -172,8 +207,8 @@
 
                     // Check if the command matches any of our timer keywords
                     if (timerCommands[command]) {
-                        const { duration, color } = timerCommands[command];
-                        startTimer(command, duration, color);
+                        const { duration, color, announcement } = timerCommands[command];
+                        startTimer(command, duration, color, announcement);
                     }
                 };
             }
@@ -183,8 +218,9 @@
              * @param {string} word - The keyword that triggered the timer.
              * @param {number} duration - The duration of the timer in seconds.
              * @param {string} color - The Tailwind CSS background color class.
+             * @param {string} announcement - Custom announcement text (empty string for default).
              */
-            function startTimer(word, duration, color) {
+            function startTimer(word, duration, color, announcement = '') {
                 const timerId = Date.now(); // Unique ID for the timer element
                 let remaining = duration;
 
@@ -214,7 +250,10 @@
                         timerCard.classList.add('timer-done');
                         
                         // Announce timer completion with text-to-speech
-                        speak(`${word} finish`);
+                        // Custom announcement + keyword, or default "finish" + keyword
+                        const prefix = announcement || 'finish';
+                        const textToSpeak = `${prefix} ${word}`;
+                        speak(textToSpeak);
                         
                         // Remove the timer after a few seconds
                         setTimeout(() => {
@@ -262,10 +301,9 @@
              * @param {string} word - The keyword to remove.
              */
             function removeTimerCommand(word) {
-                if (confirm(`Remove "${word}" timer command?`)) {
-                    delete timerCommands[word];
-                    updateCommandList();
-                }
+                delete timerCommands[word];
+                saveCommands();
+                updateCommandList();
             }
 
 
@@ -288,16 +326,19 @@
                 e.preventDefault();
                 const word = wordInput.value.trim().toLowerCase();
                 const duration = parseInt(durationInput.value, 10);
+                const announcement = announcementInput.value.trim();
 
                 if (word && duration > 0) {
                     // Generate a random-ish color for the new timer
                     const colors = ['bg-red-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-teal-500'];
                     const randomColor = colors[Math.floor(Math.random() * colors.length)];
                     
-                    timerCommands[word] = { duration, color: randomColor };
+                    timerCommands[word] = { duration, color: randomColor, announcement };
+                    saveCommands();
                     updateCommandList();
                     wordInput.value = '';
                     durationInput.value = '';
+                    announcementInput.value = '';
                 } else {
                     alert('Please enter a valid word and a duration greater than 0.');
                 }
