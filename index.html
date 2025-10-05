@@ -32,9 +32,9 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 flex flex-col items-center min-h-screen p-4 md:p-8">
+<body class="bg-gray-100 text-gray-800 flex flex-col items-center min-h-screen px-4 pt-4 pb-0 md:pt-8 md:pb-0 md:px-8">
 
-    <div class="w-full max-w-4xl mx-auto">
+    <div class="w-full max-w-4xl mx-auto flex-grow">
         <header class="text-center mb-8">
             <div class="flex items-center justify-center gap-4 mb-3">
                 <img src="https://i.imgur.com/pRQYBz7.png" alt="TimerTalk Logo" class="w-16 h-16 md:w-20 md:h-20">
@@ -52,6 +52,22 @@
                 </button>
                 <p id="status" class="text-gray-500 mt-4 h-6">Status: Idle</p>
                 <p id="transcript" class="text-gray-700 mt-2 h-6 italic"></p>
+                
+                <!-- Mode Toggle -->
+                <div class="mt-6 flex items-center justify-center gap-4">
+                    <span class="text-sm font-medium text-gray-700">Recognition Mode:</span>
+                    <div class="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+                        <button id="normalModeBtn" class="px-4 py-2 rounded-md text-sm font-medium transition-all bg-blue-600 text-white">
+                            Normal
+                        </button>
+                        <button id="singleWordModeBtn" class="px-4 py-2 rounded-md text-sm font-medium transition-all text-gray-700 hover:bg-gray-200">
+                            Single Word
+                        </button>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">
+                    <span id="modeDescription">Normal: Exact keyword match only</span>
+                </p>
             </div>
 
             <!-- Active Timers Section -->
@@ -94,6 +110,9 @@
                 </div>
             </div>
         </main>
+
+
+
     </div>
 
     <script>
@@ -115,10 +134,14 @@
             const durationInput = document.getElementById('durationInput');
             const announcementInput = document.getElementById('announcementInput');
             const commandList = document.getElementById('commandList');
+            const normalModeBtn = document.getElementById('normalModeBtn');
+            const singleWordModeBtn = document.getElementById('singleWordModeBtn');
+            const modeDescription = document.getElementById('modeDescription');
 
             // --- STATE MANAGEMENT 
             let recognition;
             let isListening = false;
+            let isSingleWordMode = false; // New state for mode toggle
             
             // Load timer commands from localStorage or use defaults
             let timerCommands = loadCommands() || {
@@ -205,10 +228,31 @@
                     const command = lastResult[0].transcript.trim().toLowerCase();
                     transcriptEl.textContent = `Heard: "${command}"`;
 
-                    // Check if the command matches any of our timer keywords
-                    if (timerCommands[command]) {
-                        const { duration, color, announcement } = timerCommands[command];
-                        startTimer(command, duration, color, announcement);
+                    if (isSingleWordMode) {
+                        // Single Word Mode: Check each word in the sentence
+                        const words = command.split(/\s+/); // Split by whitespace
+                        let matchFound = false;
+                        
+                        for (const word of words) {
+                            if (timerCommands[word]) {
+                                const { duration, color, announcement } = timerCommands[word];
+                                startTimer(word, duration, color, announcement);
+                                matchFound = true;
+                                // Only show the matched word in transcript
+                                transcriptEl.textContent = word;
+                                break; // Stop at first match
+                            }
+                        }
+                        
+                        if (!matchFound) {
+                            transcriptEl.textContent = `Heard: "${command}" (no match)`;
+                        }
+                    } else {
+                        // Normal Mode: Exact keyword match
+                        if (timerCommands[command]) {
+                            const { duration, color, announcement } = timerCommands[command];
+                            startTimer(command, duration, color, announcement);
+                        }
                     }
                 };
             }
@@ -309,6 +353,25 @@
 
             // --- EVENT LISTENERS ---
 
+            // Mode toggle buttons
+            normalModeBtn.addEventListener('click', () => {
+                isSingleWordMode = false;
+                normalModeBtn.classList.add('bg-blue-600', 'text-white');
+                normalModeBtn.classList.remove('text-gray-700', 'hover:bg-gray-200');
+                singleWordModeBtn.classList.remove('bg-blue-600', 'text-white');
+                singleWordModeBtn.classList.add('text-gray-700', 'hover:bg-gray-200');
+                modeDescription.textContent = 'Normal: Exact keyword match only';
+            });
+
+            singleWordModeBtn.addEventListener('click', () => {
+                isSingleWordMode = true;
+                singleWordModeBtn.classList.add('bg-blue-600', 'text-white');
+                singleWordModeBtn.classList.remove('text-gray-700', 'hover:bg-gray-200');
+                normalModeBtn.classList.remove('bg-blue-600', 'text-white');
+                normalModeBtn.classList.add('text-gray-700', 'hover:bg-gray-200');
+                modeDescription.textContent = 'Single Word: Matches any word in your sentence';
+            });
+
             // Toggle listening on/off
             controlButton.addEventListener('click', () => {
                 isListening = !isListening;
@@ -345,5 +408,25 @@
             });
         });
     </script>
+
+    <!-- Footer 
+    <footer class="w-full bg-white pt-3 pb-0">
+        <div class="max-w-4xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div>
+                <div class="font-semibold">TimerTalk</div>
+                <div class="text-xs text-gray-500">Voice activated timers — built with the Web Speech API</div>
+            </div>
+
+            <div class="text-sm text-gray-600 text-center">
+                <div>Made with ❤️ • <a class="text-blue-600 hover:underline" href="https://github.com/renabazinin/voice-activated-timers" target="_blank" rel="noopener">Source</a></div>
+                <div class="text-xs mt-1">Hosted on GitHub Pages • Works best in Chrome / Edge</div>
+            </div>
+
+            <div class="text-sm text-gray-600">
+                <a class="text-gray-600 hover:text-blue-600" href="https://developer.mozilla.org/en-US/docs/Web/API/SpeechRecognition" target="_blank" rel="noopener">Docs</a>
+            </div>
+        </div>
+    </footer>
+    -->
 </body>
 </html>
